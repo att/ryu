@@ -148,11 +148,12 @@ class VmacManager(object):
     """
     Manage vmacs of VMs, switches and datacenters
     """
-    DCENTER_MASK = "ff:ff:00:00:00:00"
-    SWITCH_MASK = "ff:ff:ff:ff:00:00"
+    DCENTER_MASK = "ff:00:00:00:00:00"
+    SWITCH_MASK = "ff:ff:ff:00:00:00"
     TENANT_MASK = "00:00:00:00:00:ff"
     SWITCH_MAXID = 65535
     VM_MAXID = 65535
+    DCENTER_MAXID = 127
 
     def __init__(self):
         # Record switch id assignment
@@ -165,6 +166,8 @@ class VmacManager(object):
         self.dpid_to_vmac = {}
         # VM virtual MAC
         self.mac_to_vmac = {}
+        # HACK: for vm_id conflict
+        self.vm_counter = 1
 
     def update_switch(self, dcenter_id, dpid):
         """Handle switch connection"""
@@ -188,7 +191,8 @@ class VmacManager(object):
     def generate_vm_id(self, vm_mac, dpid):
         """Generate a new vm_id, 00 is saved for switch"""
         #TODO(chen): Avoid hash conflict
-        vm_id = (hash(vm_mac) % self.VM_MAXID + 1)
+        vm_id = self.vm_counter
+        self.vm_counter += 1
         if self.dpid_to_vmidlist[dpid][vm_id]:
             LOGGER.info("WARNING: switch id conflict:"
                         "vm_id=%s has been created for dpid=%s", vm_id, dpid)
@@ -203,20 +207,20 @@ class VmacManager(object):
         Address form: xx:xx:00:00:00:00
         xx:xx is converted from data center id
         """
-        if dcenter > 65535:
+        if dcenter > self.DCENTER_MAXID:
             return
 
-        dcenter_high = (dcenter >> 8) & 0xff
-        dcenter_low = dcenter & 0xff
-        dcenter_vmac = "%02x:%02x:00:00:00:00" % (dcenter_high, dcenter_low)
+        dcenter_id = dcenter * 2
+        dcenter_hex = dcenter_id & 0xff
+        dcenter_vmac = "%02x:00:00:00:00:00" % (dcenter_hex)
         return dcenter_vmac
 
     def create_swc_vmac(self, dcenter_vmac, dpid):
         """Generate MAC address prefix for switch based on
         datacenter id and switch id.
 
-        Address form: xx:xx:yy:yy:00:00
-        xx:xx is converted from data center id
+        Address form: xx:yy:yy:00:00:00
+        xx is converted from datacenter id
         yy:yy is converted from switch id
         """
         dcenter_prefix = self.get_dc_prefix(dcenter_vmac)
@@ -229,15 +233,16 @@ class VmacManager(object):
 
         switch_high = (switch_num >> 8) & 0xff
         switch_low = switch_num & 0xff
-        switch_suffix = ("%02x:%02x:00:00" % (switch_high, switch_low))
+        switch_suffix = ("%02x:%02x:00:00:00" % (switch_high, switch_low))
         return ':'.join((dcenter_prefix, switch_suffix))
 
     def create_vm_vmac(self, vm_mac, switch_vmac, vm_id, tenant_id):
         """Generate virtual MAC address of a VM"""
 
         switch_prefix = self.get_swc_prefix(switch_vmac)
-        vm_id_hex = vm_id & 0xff
-        vm_id_suffix = "%02x" % vm_id_hex
+        vm_id_high = (vm_id >> 8) & 0xff
+        vm_id_low = vm_id & 0xff
+        vm_id_suffix = "%02x:%02x" % (vm_id_high, vm_id_low)
         tenant_id_hex = tenant_id & 0xff
         tenant_id_suffix = "%02x" % tenant_id_hex
         vmac = ':'.join((switch_prefix, vm_id_suffix, tenant_id_suffix))
@@ -251,11 +256,11 @@ class VmacManager(object):
 
     def get_swc_prefix(self, vmac):
         """Extract switch prefix from virtual MAC address"""
-        return vmac[:11]
+        return vmac[:8]
 
     def get_dc_prefix(self, vmac):
         """Extract switch prefix from virtual MAC address"""
-        return vmac[:5]
+        return vmac[:2]
 
 
 class FlowManager(object):
