@@ -403,6 +403,9 @@ class Inception(app_manager.RyuApp):
         LOGGER.info("Handle VM migration")
 
         if dcenter_old != self.dcenter_id:
+            LOGGER.info("VM migration from (DC=%s) to (DC=%s)", dcenter_old,
+                        self.dcenter_id)
+
             # Multi-datacenter migration
             # Install/Update a new flow at dpid_new towards mac.
             vmac_record = self.vmac_manager.mac_to_vmac[mac]
@@ -462,6 +465,9 @@ class Inception(app_manager.RyuApp):
             return
 
         if dpid_old != dpid_new:
+            LOGGER.info("VM migration from (DPID=%s) to (DPID=%s)",
+                        dpid_old, dpid_new)
+
             # Same datacenter, different switch migration
             # Install/Update a new flow at dpid_new towards mac
             vmac_record = self.vmac_manager.mac_to_vmac[mac]
@@ -507,6 +513,9 @@ class Inception(app_manager.RyuApp):
             return
 
         if port_old != port_new:
+            LOGGER.info("VM migration from (port=%s) to (port=%s)",
+                        port_old, port_new)
+
             # Same switch, different port migration
             # Redirect traffic
             self.flow_manager.set_local_flow(dpid_old, vmac_old, mac, port_new,
