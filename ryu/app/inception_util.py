@@ -53,6 +53,7 @@ CONF.import_opt('arp_timeout', 'ryu.app.inception_conf')
 CONF.import_opt('zookeeper_storage', 'ryu.app.inception_conf')
 CONF.import_opt('interdcenter_port_prefix', 'ryu.app.inception_conf')
 CONF.import_opt('intradcenter_port_prefix', 'ryu.app.inception_conf')
+CONF.import_opt('gateway_vip', 'ryu.app.inception_conf')
 
 
 class Topology(object):
@@ -155,23 +156,23 @@ class Topology(object):
 
     def get_fwd_port(self, dpid1, dpid2):
         ip_2 = self.ip_to_dpid[:dpid2]  # bidict reverse query
-        port = self.dpid_ip_to_port[dpid1][ip_2]
+        port = self.dpid_ip_to_port[dpid1].get(ip_2)
         return port
 
     def get_dcenter_port(self, dpid_gw, dcenter):
         return self.gateway_to_dcenters[dpid_gw][dcenter]
 
-    def get_neighbors(self, dpid):
+    def get_neighbors(self, dpid_src):
         """Get neighbors in the form of {dpid_1: port_1, dpid_2, port_2, ...}.
-        Skip neighbor switches not connected yet (i.e., not in self.ip_to_dpid)
         """
 
-        ip_to_port = self.dpid_ip_to_port[dpid]
         dpid_to_port = {}
-        for ip, port in ip_to_port.items():
-            dpid = self.ip_to_dpid.get(ip)
-            if dpid is not None:
-                dpid_to_port[dpid] = port
+        for dst_ip, port in self.dpid_ip_to_port[dpid_src].items():
+            # skip neighbor switches not connected yet
+            dpid_dst = self.ip_to_dpid.get(dst_ip)
+            if dpid_dst is None:
+                continue
+            dpid_to_port[dpid_dst] = port
 
         return dpid_to_port
 
@@ -475,9 +476,9 @@ class FlowManager(object):
 
     def set_switch_dcenter_flows(self, dpid, topology, vmac_manager):
         """Set up flows on non-gateway switches to other datacenters"""
+        gw_fwd_port = topology.dpid_ip_to_port[dpid][CONF.gateway_vip]
         dpid_gws = topology.get_gateways()
         for dpid_gw in dpid_gws:
-            gw_fwd_port = topology.get_fwd_port(dpid, dpid_gw)
             for dcenter in topology.gateway_to_dcenters[dpid_gw]:
                 peer_dc_vmac = vmac_manager.create_dc_vmac(dcenter)
                 self.set_topology_flow(dpid, peer_dc_vmac,
@@ -493,8 +494,9 @@ class FlowManager(object):
 
             self_vmac = vmac_manager.get_swc_vmac(dpid)
             peer_port = topology.get_fwd_port(peer_dpid, dpid)
-            self.set_topology_flow(peer_dpid, self_vmac,
-                                   VmacManager.SWITCH_MASK, peer_port)
+            if peer_port is not None:
+                self.set_topology_flow(peer_dpid, self_vmac,
+                                       VmacManager.SWITCH_MASK, peer_port)
 
     def set_topology_flow(self, dpid, mac, mask, port):
         """Set up a microflow for unicast on switch DPID towards MAC"""

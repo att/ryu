@@ -40,9 +40,12 @@ CONF.register_opts([
                help="Log level for Kazoo/ZooKeeper"),
     cfg.StrOpt('gateway_ips',
                default="127.0.0.1",
-               help=("IP addresses of the physical machine hosting gateway"
+               help=("IP addresses of the gateway(s)"
                      "Format: <gateway_ip1>,<gateway_ip2>,...\n"
                      "E.g., 192.168.0.1,192.168.0.2")),
+    cfg.StrOpt('gateway_vip',
+               default="127.0.0.1",
+               help=("IP addresses of the virutal IP of gateway(s)")),
     cfg.StrOpt('dhcp_ip',
                default="127.0.0.1",
                help="IP address of the physical machine hosting dhcp server"),
