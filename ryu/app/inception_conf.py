@@ -64,6 +64,9 @@ CONF.register_opts([
     cfg.IntOpt('rpc_port',
                default=8000,
                help="The port for XMLRPC call"),
+    cfg.IntOpt('eval_lifetime',
+               default=None,
+               help="Program lifetime. Only for evaluation"),
     cfg.StrOpt('peer_dcenters',
                default="",
                help=("Neighbor datacenter information\n"

@@ -16,6 +16,7 @@
 #    under the License.
 
 import logging
+import sys
 import md5
 
 from oslo.config import cfg
@@ -32,7 +33,6 @@ from ryu.base import app_manager
 from ryu.controller import dpset
 from ryu.controller import handler
 from ryu.controller import ofp_event
-from ryu.lib import hub
 from ryu.lib.dpid import dpid_to_str
 from ryu.lib.packet.arp import arp
 from ryu.lib.packet.dhcp import dhcp
@@ -142,6 +142,7 @@ class Inception(app_manager.RyuApp):
     @handler.set_ev_cls(ofp_event.EventOFPPacketIn, handler.MAIN_DISPATCHER)
     def packet_in_handler(self, event):
         """Handle when a packet is received."""
+        LOGGER.info('New packet_in received.')
         msg = event.msg
         datapath = msg.datapath
         dpid = dpid_to_str(datapath.id)
@@ -150,6 +151,10 @@ class Inception(app_manager.RyuApp):
         packet.serialize()
         packet_data = packet.data.decode('Latin-1').encode('Latin-1')
         pkt_digest = md5.new(packet_data).digest()
+
+        # HACK: Abort program when time is up
+        if self.zk_manager.exit_flag:
+            sys.exit()
 
         if self.zk_manager.is_master():
             # master role

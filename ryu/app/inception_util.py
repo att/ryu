@@ -18,6 +18,7 @@
 """Inception utilities"""
 import logging
 import os
+import sys
 import time
 import struct
 import md5
@@ -862,6 +863,7 @@ class ZkManager(object):
         if self.zk_storage:
             # Flag indicating master/slave role
             self.master_ctl = False
+            self.exit_flag = False
 
             self.pos_path = "/pos"
             self.arp_path = "/arp"
@@ -870,8 +872,6 @@ class ZkManager(object):
             self.pktin_path = "/log/packet_in"
             self.rpc_path = "/log/rpc"
 
-            self.pktin_logs = {}
-            self.rpc_logs = {}
             self.digest_to_pktin = {}
 
             zk_logger = logging.getLogger('kazoo')
@@ -911,12 +911,17 @@ class ZkManager(object):
                        vm_manager=self.inception.vm_manager,
                        vmac_manager=self.inception.vmac_manager,
                        tenant_manager=self.inception.tenant_manager)
-        self.load_failover_logs()
         self.handle_failover_log()
         self.master_ctl = True
         # TODO: New leader election design
-        while True:
-            time.sleep(1)
+        # HACK: Hardcode the program lifetime for evaluation
+        if CONF.eval_lifetime is None:
+            while True:
+                time.sleep(1)
+        else:
+            time.sleep(CONF.eval_lifetime)
+            self.exit_flag = True
+            sys.exit()
 
     def consume_pkt(self):
         """Consume packet_in in queue and local cache"""
@@ -1078,12 +1083,14 @@ class ZkManager(object):
     def add_packetin_log(self, position, packet_data, txn=None):
         """Failover logging"""
         if self.zk_storage:
+            LOGGER.info('Add packet_in log')
             log_path = os.path.join(self.pktin_path, position)
             self.zk.create(log_path, packet_data)
 
     def del_packetin_log(self, position, txn=None):
         """Delete failover logging"""
         if self.zk_storage:
+            LOGGER.info('Delete packet_in log')
             log_path = os.path.join(self.pktin_path, position)
             if txn is None:
                 self.zk.delete(log_path)
@@ -1105,33 +1112,18 @@ class ZkManager(object):
                 txn.delete(log_path)
                 self.txn_commit(txn)
 
-    def load_failover_logs(self):
-        LOGGER.info('Load failover logs...')
-        # Get packet_in logs
-        zk_pktins = self.zk.get_children(self.pktin_path)
-        for znode_unicode in zk_pktins:
-            znode = znode_unicode.encode('Latin-1')
-            log_path = os.path.join(self.pktin_path, znode)
-            data, _ = self.zk.get(log_path)
-            self.pktin_logs[znode] = data
-
-        # Get RPC logs
-        zk_rpcs = self.zk.get_children(self.rpc_path)
-        for znode_unicode in zk_rpcs:
-            znode = znode_unicode.encode('Latin-1')
-            log_path = os.path.join(self.rpc_path, znode)
-            data, _ = self.zk.get(log_path)
-            self.rpc_logs[znode] = data
-
-        LOGGER.info('Failover logs loaded')
-
     def handle_failover_log(self):
         """Check if any work is left by previous controller.
         If so, continue the unfinished work.
         """
         LOGGER.info('Handle failover...')
         # Do unfinished packet_in handling
-        for pktin_log, raw_data in self.pktin_logs.items():
+        zk_pktins = self.zk.get_children(self.pktin_path)
+        for znode_unicode in zk_pktins:
+            LOGGER.info('Process failover log...')
+            pktin_log = znode_unicode.encode('Latin-1')
+            log_path = os.path.join(self.pktin_path, pktin_log)
+            raw_data, _ = self.zk.get(log_path)
             dpid, in_port = str_to_tuple(pktin_log)
             pkt_data = raw_data.decode('Latin-1').encode('Latin-1')
             pkt_digest = md5.new(pkt_data).digest()
@@ -1146,7 +1138,12 @@ class ZkManager(object):
             self.del_packetin_log(pktin_log)
 
         # Do unfinished rpc
-        for rpc_log, rpc_data in self.rpc_logs.items():
+        zk_rpcs = self.zk.get_children(self.rpc_path)
+        for znode_unicode in zk_rpcs:
+            LOGGER.info('Process RPC log...')
+            rpc_log = znode_unicode.encode('Latin-1')
+            log_path = os.path.join(self.rpc_path, rpc_log)
+            rpc_data, _ = self.zk.get(log_path)
             func_name, _ = str_to_tuple(rpc_log)
             rpc_tuple = str_to_tuple(rpc_data)
             try:
@@ -1156,6 +1153,11 @@ class ZkManager(object):
                 self.del_rpc_log(rpc_log, txn)
             except AttributeError:
                 LOGGER.warning("Unexpected exception in finding rpc method")
+
+        self.zk.delete(self.pktin_path, recursive=True)
+        self.zk.delete(self.rpc_path, recursive=True)
+        self.zk.create(self.pktin_path)
+        self.zk.create(self.rpc_path)
         LOGGER.info('Failover done.')
 
     def process_pktin_cache(self):
