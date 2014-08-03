@@ -49,6 +49,7 @@ CONF.import_opt('dhcp_port', 'ryu.app.inception_conf')
 CONF.import_opt('self_dcenter', 'ryu.app.inception_conf')
 CONF.import_opt('rpc_port', 'ryu.app.inception_conf')
 CONF.import_opt('arp_timeout', 'ryu.app.inception_conf')
+CONF.import_opt('arp_readers', 'ryu.app.inception_conf')
 CONF.import_opt('ofp_versions', 'ryu.app.inception_conf')
 CONF.import_opt('peer_dcenters', 'ryu.app.inception_conf')
 CONF.import_opt('tenant_info', 'ryu.app.inception_conf')
@@ -82,6 +83,7 @@ class Inception(app_manager.RyuApp):
 
         self.rpc_manager = RPCManager.rpc_from_config(CONF.peer_dcenters,
                                                       self.dcenter_id)
+        self.rpc_manager.update_arp_readers(CONF.arp_readers)
         self.zk_manager = i_util.ZkManager(self, CONF.zookeeper_storage)
 
         ## Inception relevent modules

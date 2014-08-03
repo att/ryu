@@ -84,6 +84,11 @@ CONF.register_opts([
                help=("Tenant group information identified by MAC addr\n"
                      "Format: <tenant1_mac1,tenant1_mac2,...>;...\n"
                      "59:fc:1e:52:fb:1b,fd:06:03:4d:98:47;b5:36:85:b4:cb:76")),
+    cfg.StrOpt('arp_readers',
+               default="127.0.0.1",
+               help=("IP addresses of all ARP readers"
+                     "Format: <reader_ip1>,<reader_ip2>,...\n"
+                     "E.g., 192.168.0.1,192.168.0.2")),
     # TODO: remove hardcoding
     cfg.IntOpt('num_switches',
                default=4,

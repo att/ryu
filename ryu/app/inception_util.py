@@ -765,11 +765,17 @@ class RPCManager(object):
         self.dcenter_to_rpc = {}
         self.rpc_id = 0
 
+        self.arp_readers = []
+        self.rpc_arp_readers = []
+
     @classmethod
     def rpc_from_config(cls, peer_dcenters, self_dcenter='0'):
         dcenter_to_info = cls.parse_peer_dcenters(peer_dcenters)
         rpc_manager = cls(dcenter_to_info, self_dcenter)
         return rpc_manager
+
+    def update_arp_readers(self, arp_readers_str):
+        self.arp_readers = str_to_tuple(arp_readers_str)
 
     @staticmethod
     def parse_peer_dcenters(peer_dcenters, out_sep=';', in_sep=','):
@@ -796,12 +802,20 @@ class RPCManager(object):
         rpc_server.register_instance(inception_rpc)
         hub.spawn(rpc_server.serve_forever)
 
-        # Create RPC clients
+        # Create dcenter RPC clients
         for dcenter in self.dcenter_to_info:
             controller_ip, _ = self.dcenter_to_info[dcenter]
+            LOGGER.info("New RPC channel: %s", controller_ip)
             rpc_client = ServerProxy("http://%s:%s" %
                                           (controller_ip, CONF.rpc_port))
             self.dcenter_to_rpc[dcenter] = rpc_client
+
+        # Create arp reader RPC clients
+        for reader_ip in self.arp_readers:
+            LOGGER.info("New ARP reader: %s", reader_ip)
+            rpc_client = ServerProxy("http://%s:%s" %
+                                          (reader_ip, CONF.rpc_port))
+            self.rpc_arp_readers.append(rpc_client)
 
     def get_dcenters(self):
         peer_dcenters = self.dcenter_to_info.keys()
@@ -813,6 +827,10 @@ class RPCManager(object):
         self.rpc_id = (self.rpc_id + 1) % self.MAX_ID
         for rpc_client in self.dcenter_to_rpc.values():
             rpc_client.do_rpc(func_name, rpc_id, arguments)
+
+    def rpc_arp_learning(self, ip, vmac):
+        for rpc_client in self.rpc_arp_readers:
+            rpc_client.update_local_arp(ip, vmac)
 
 
 class ArpManager(object):
